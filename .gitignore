@@ -1,13 +1,20 @@
-# Python cache
+# Ignore Python virtual environment
+.venv/
+
+# Ignore model checkpoints
+models/
+outputs/
+checkpoints/
+
+# Ignore dataset cache
 __pycache__/
 *.pyc
 
-# Virtual environment
-.venv/
+# Ignore Jupyter notebook cache
+.ipynb_checkpoints/
 
-# Model outputs
-checkpoints/
-outputs/
-
-# Mac junk
+# Ignore OS files
 .DS_Store
+
+# Ignore HuggingFace cache
+.cache/
