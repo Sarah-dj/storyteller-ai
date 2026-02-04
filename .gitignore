@@ -18,3 +18,26 @@ __pycache__/
 
 # Ignore HuggingFace cache
 .cache/
+
+# python / venv
+.venv/
+__pycache__/
+*.pyc
+
+# mac
+.DS_Store
+
+# datasets + caches
+data/raw/*
+data/processed/*
+data/train/*
+.cache/
+.ipynb_checkpoints/
+
+# training outputs
+outputs/
+checkpoints/
+
+# huggingface cache (common)
+**/.huggingface/
+**/hf_cache/
