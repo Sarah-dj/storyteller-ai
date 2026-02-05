@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
+from transformers import StoppingCriteria, StoppingCriteriaList
 
 # ✅ Base model
 BASE_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
@@ -50,3 +51,14 @@ output = model.generate(
 )
 
 print(tokenizer.decode(output[0], skip_special_tokens=True))
+
+END_TOKEN = "<END_STORY>"
+
+class StopOnEndStory(StoppingCriteria):
+    def __init__(self, tokenizer):
+        self.end_ids = tokenizer.encode(END_TOKEN, add_special_tokens=False)
+
+    def __call__(self, input_ids, scores, **kwargs):
+        if input_ids.shape[-1] < len(self.end_ids):
+            return False
+        return input_ids[0, -len(self.end_ids):].tolist() == self.end_ids
