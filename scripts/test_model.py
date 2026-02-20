@@ -1,64 +1,66 @@
+import argparse
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
-from transformers import StoppingCriteria, StoppingCriteriaList
 
-# ✅ Base model
-BASE_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base_model", type=str, default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    ap.add_argument("--adapter_dir", type=str, default="outputs/lora_full_2m_v2/adapter")
+    ap.add_argument("--max_new_tokens", type=int, default=520)
+    args = ap.parse_args()
 
-# ✅ Your trained adapter path
-ADAPTER_PATH = "models/adapters/tinyllama-lora"
+    bnb = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16,
+    )
 
-print("Loading tokenizer...")
-tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+    tokenizer = AutoTokenizer.from_pretrained(args.base_model, use_fast=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
-print("Loading base model...")
-model = AutoModelForCausalLM.from_pretrained(
-    BASE_MODEL,
-    torch_dtype=torch.float16,
-    device_map="auto"
-)
+    base = AutoModelForCausalLM.from_pretrained(
+        args.base_model,
+        quantization_config=bnb,
+        device_map="auto"
+    )
 
-print("Loading LoRA adapter...")
-model = PeftModel.from_pretrained(model, ADAPTER_PATH)
+    model = PeftModel.from_pretrained(base, args.adapter_dir)
+    model.eval()
 
-print("\n✅ Model ready!\n")
+    prompt = """### Instruction:
+Write a COMPLETE children's story (220–350 words) with:
+1) a clear beginning
+2) a problem or mystery
+3) an unexpected moment
+4) a satisfying ending (no sudden cut)
 
-# ---------------------------------------------------
-# Prompt test
-# ---------------------------------------------------
+Theme: Tommy discovers something strange in the garden.
 
-prompt = """Write a fantasy story.
-
-TITLE:
-SETTING: forest
-TONE: mysterious
-LEVEL: 7
-
-STORY:
+### Story:
 """
 
-inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-print("Generating...\n")
+    with torch.no_grad():
+        out = model.generate(
+            **inputs,
+            max_new_tokens=args.max_new_tokens,
+            min_new_tokens=220,
+            do_sample=True,
+            temperature=0.95,
+            top_p=0.9,
+            top_k=50,
+            repetition_penalty=1.2,
+            no_repeat_ngram_size=4,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id,
+        )
 
-output = model.generate(
-    **inputs,
-    max_new_tokens=250,
-    temperature=0.9,
-    top_p=0.95,
-    do_sample=True
-)
+    full = tokenizer.decode(out[0], skip_special_tokens=True)
+    print(full[len(prompt):].strip())
 
-print(tokenizer.decode(output[0], skip_special_tokens=True))
-
-END_TOKEN = "<END_STORY>"
-
-class StopOnEndStory(StoppingCriteria):
-    def __init__(self, tokenizer):
-        self.end_ids = tokenizer.encode(END_TOKEN, add_special_tokens=False)
-
-    def __call__(self, input_ids, scores, **kwargs):
-        if input_ids.shape[-1] < len(self.end_ids):
-            return False
-        return input_ids[0, -len(self.end_ids):].tolist() == self.end_ids
+if __name__ == "__main__":
+    main()
